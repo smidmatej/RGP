@@ -223,7 +223,7 @@ def main():
 
     pbar = tqdm(total=X_t.shape[0])
     ani = animation.FuncAnimation(fig, animate, frames=len(mean_training), interval=500)     
-    ani.save('animation.mp4', writer='ffmpeg', fps=10, dpi=100)
+    ani.save('animation.gif', writer='imagemagick', fps=10, dpi=100)
     pbar.close()
     plt.show()
 
