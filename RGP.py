@@ -1,4 +1,3 @@
-
  # 
  # This file is part of the RGP distribution (https://github.com/smidmatej/RGP).
  # Copyright (c) 2023 Smid Matej.
@@ -22,7 +21,11 @@ from scipy.linalg import sqrtm
 
 
 class RBF:
-    def __init__(self, L : np.array = np.eye(1), sigma_f : float = 1) -> None:
+    """
+    Radial Basis Function kernel function k(x1,x2) = sigma_f**2 * exp(-1/2*(x1-x2).T.dot(L.dot(L)).dot(x1-x2))
+    """
+    
+    def __init__(self, L : float = 1, sigma_f : float = 1) -> None:
         """
         Contructor of the RBF function k(x1,x2).
         
@@ -97,15 +100,19 @@ class RGP:
         self.sigma_n = 0.1 # Noise variance
         self.eta = np.array([self.K.L, self.K.sigma_f, self.sigma_n]) # Hyperparameters
         # WARNING: Dont confuse the estimate g at X with the estimate g_t at X_t 
-        # p(g_|y_t-1)
+        # p(g|y_t-1)
         self.mu_g_t_minus_1 = y_ # The a priori mean is the measurement with no y_t 
         self.C_g_t_minus_1 = self.K.covariance_matrix(X, X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # The a priori covariance is the covariance with no y_t
 
 
-        # Initialize the state
-        # p(g_)
+        # Initialize the state (regression parameters only) for RGP
+        # p(g)
         self.mu_g_t = self.mu_g_t_minus_1
         self.C_g_t = self.C_g_t_minus_1 
+
+        # Initialize the state (regression parameters and hyperparameters) for RGP*
+        # p(g, eta|y_{1:t}) = p(z|y_{1:t})
+
 
         # Precompute these since they do not change with regression
         self.K_x = self.K.covariance_matrix(self.X, self.X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # Covariance matrix over X
@@ -150,7 +157,6 @@ class RGP:
         # Infer the a posteriori distribution of p(g_t|y_t) (the estimate of g_t at X_t)
         mu_p_t, C_p_t, Jt = self.predict(Xt, cov = True, return_Jt = True)
 
-        #breakpoint()
 
         # ------ Update step ------
         # Update the a posteriori distribution of p(g_|y_t) (the estimate of g at X)
@@ -159,8 +165,6 @@ class RGP:
                     C_p_t + self.sigma_n**2 * np.eye(Xt.shape[0]))) # Kalman gain
         self.mu_g_t = self.mu_g_t_minus_1 + G_tilde_t.dot(yt - mu_p_t) # The a posteriori mean of p(g_|y_t)
         self.C_g_t = self.C_g_t_minus_1 - G_tilde_t.dot(Jt).dot(self.C_g_t_minus_1) # The a posteriori covariance of p(g_|y_t)
-
-
 
         return self.mu_g_t, self.C_g_t
 
@@ -199,7 +203,7 @@ class RGP:
         C_z_t_minus_1 = C_z_t
 
 
-        # ------ Inference step ------
+        # ------! Inference step !------
 
         Jt = self.K.covariance_matrix(Xt, self.X).dot(self.K_x_inv) # Gain matrix (same as in regression)
         assert Jt.shape[1] == n_g, "Jt.shape[1] != n_g"
@@ -249,8 +253,54 @@ class RGP:
             mu_p_t += w[i] * mu_p_i[i,:]
             C_p_t += w[i] * (np.outer(mu_p_i[i,:] - mu_p_t, mu_p_i[i,:] - mu_p_t) + C_p_i[i,:,:])
 
-        breakpoint()
-        return mu_p_t, C_p_t
+        
+        # ------! Update step !------
+
+        # Decomposition of mu_p_t into observable and unobservable parts
+        # Observable part: sigma_n, g_t
+
+        # Observable part
+        mu_o_t = mu_p_t[n_g + n_eta - 1:] # sigma_n is on index n_g+n_eta-1 and is last of eta, everything after is is g_t
+        C_o_t = C_p_t[n_g + n_eta - 1:, n_g + n_eta - 1:]
+        # Unobservable part
+        mu_u_t_minus_1 = mu_p_t[:n_g + n_eta - 1]
+        C_u_t_minus_1 = C_p_t[:n_g + n_eta - 1, :n_g + n_eta - 1]
+        # Covariance between observable and unobservable parts
+        C_ou_t = C_p_t[n_g + n_eta - 1:, :n_g + n_eta - 1]
+
+        # ------ Update observable state ------
+        mu_y_t = mu_o_t[1:] # g_t (without sigma_n)
+        C_y_t = C_o_t[1:, 1:] + C_o_t[0, 0] + mu_o_t[0]**2 
+
+        C_o_y_t = C_o_t[:, 1:] # Covariance between observable part and y_t
+        
+        Gt = C_o_y_t.dot(np.linalg.inv(C_y_t)) # Kalman gain
+
+        mu_e_t = mu_o_t + Gt.dot(yt - mu_y_t)
+        C_e_t = C_o_t - Gt.dot(C_y_t).dot(Gt.T)
+
+        # ------ Update joint state ------
+        # This update has the same structure as the Rauch-Tung-Striebel smoother according to the article
+        Lt = C_ou_t.T.dot(np.linalg.inv(C_o_t)) # Kalman gain
+
+        mu_u_t = mu_u_t_minus_1 + Lt.dot(mu_e_t - mu_o_t)
+        C_u_t = C_u_t_minus_1 + Lt.dot(C_e_t - C_o_t).dot(Lt.T)
+
+
+        h = np.zeros((mu_e_t.shape[0], ))
+        h[0] = 1.0
+
+        # sigma_n; g_t; L; sigma_f
+
+        sigma_n = np.array([h.dot(mu_e_t)])
+        mu_z_t = np.asarray(np.bmat([[sigma_n],[mu_u_t]])).ravel()
+
+        C_z_t = np.asarray(np.bmat([
+            [np.array([h.dot(C_e_t).dot(h.T)]).reshape(1,1), (h.dot(C_e_t).dot(Lt.T)).reshape((1,-1))],
+            [(Lt.dot(C_e_t).dot(h.T)).reshape((-1,1)), C_u_t]]))
+
+        return mu_z_t, C_z_t
+
 
     def __draw_sigma_points(self, mu : np.array, C : np.array) -> np.array:
         """
