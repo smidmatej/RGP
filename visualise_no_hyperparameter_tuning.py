@@ -63,8 +63,7 @@ def main():
     print('Training model recursively...')
     pbar = tqdm(total=X_t.shape[0])
     for t in range(X_t.shape[0]):
-        #rgp.regress(X_t[t,:], y_t[t,:])
-        rgp.learn(X_t[t,:], y_t[t,:])
+        rgp.regress(X_t[t,:], y_t[t,:])
         mean_training[t+1], cov_training[t+1] = rgp.predict(X_query, cov=True)
         g_[t+1] = rgp.mu_g_t # Current estimate of g at X
         pbar.update()
@@ -166,6 +165,71 @@ def main():
     plt.show()
 
 
+    # ----------------- ANIMATION -----------------
+    print('Rendering animation...')
+
+    def animate(i):
+
+        line_mean.set_data(X_query, mean_training[i])
+
+        scat_basis_vectors.set_offsets(np.array([X_.ravel(), g_[i].ravel()]).T)
+        scat_training_points.set_offsets(np.array([X_t[:i,:].ravel(), y_t[:i,:].ravel()]).T)
+
+        global fill_between
+        fill_between.remove()
+
+        fill_between = ax.fill_between(X_query.reshape(-1),
+            mean_training[i].reshape(-1) - 2*np.sqrt(np.diag(cov_training[i])), 
+            mean_training[i].reshape(-1) + 2*np.sqrt(np.diag(cov_training[i])), color=cs[1], alpha=0.2)
+
+        pbar.update()
+
+
+    animation.writer = animation.writers['ffmpeg']
+    plt.ioff() # Turn off interactive mode to hide rendering animations
+
+
+
+
+    plt.style.use('fast')
+    sns.set_style("whitegrid")
+
+    #gs = gridspec.GridSpec(2, 2)
+    fig = plt.figure(figsize=(10,10), dpi=100)
+    ax = fig.add_subplot(111)
+
+    line_mean, = ax.plot([], [], '--', color=cs[0], label='E[g(x)]')
+    scat_training_points = ax.scatter([], [], marker='+', color=cs[1], label='Training samples')
+    scat_basis_vectors = ax.scatter([], [], marker='o', color=cs[2], label='Basis Vectors')
+
+    # Hack to be able to change the fill at each step
+    global fill_between
+    fill_between = ax.fill_between([],
+        [], 
+        [], color=cs[3], alpha=0.2)
+
+
+
+    ax.plot(X_query, y_true, color='gray')
+
+    ax.set_xlim((min((min(X_t), min(X_query), min(X_))) , max((max(X_t), max(X_query), max(X_)))))
+    #ax.set_ylim((min((min(y_), min(y_t), min(y_true))) , max((max(y_), max(y_t), max(y_true)))))
+    ax.set_ylim((-2,2))
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('Recursive Gaussian Process')
+    ax.legend()
+
+
+    pbar = tqdm(total=X_t.shape[0])
+    ani = animation.FuncAnimation(fig, animate, frames=len(mean_training), interval=500)     
+    ani.save('animation.gif', writer='imagemagick', fps=10, dpi=100)
+    pbar.close()
+    plt.show()
+
+
+    
+    
     
     
     
