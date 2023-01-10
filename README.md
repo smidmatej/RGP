@@ -8,8 +8,8 @@ The computational requirements are also vastly reduced.
 
 ## Example
 
-![animated_regression](animation.gif)
-![before_after](before_after_difference.png)
+![animated_regression](regression.gif)
+![before_after](regression_comparisson.png)
 
 ## References
 <a id="1">[1]</a> 

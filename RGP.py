@@ -25,7 +25,7 @@ class RBF:
     Radial Basis Function kernel function k(x1,x2) = sigma_f**2 * exp(-1/2*(x1-x2).T.dot(L.dot(L)).dot(x1-x2))
     """
     
-    def __init__(self, L : float = 1, sigma_f : float = 1) -> None:
+    def __init__(self, L : np.array = np.eye(1), sigma_f : float = 1) -> None:
         """
         Contructor of the RBF function k(x1,x2).
         
@@ -43,7 +43,7 @@ class RBF:
         :param: x2: np.array of dimension 1 x d
         """
         dif = x1-x2
-        
+
         return float(self.sigma_f**2 * np.exp(-1/2*dif.T.dot(np.linalg.inv(self.L*self.L)).dot(dif)))
 
     def covariance_matrix(self, x1 : np.array, x2 : np.array) -> np.array:
@@ -65,13 +65,13 @@ class RBF:
         
         # for all combinations calculate the kernel
         for i in range(x1.shape[0]):
-            a = x1[i,:].reshape(-1,1)
+            _a = x1[i,:].reshape(-1,1)
             for j in range(x2.shape[0]):
-
-                b = x2[j,:].reshape(-1,1)
+                #breakpoint()
+                _b = x2[j,:].reshape(-1,1)
 
                 
-                cov_mat[i,j] = self.__call__(a,b)
+                cov_mat[i,j] = self.__call__(_a,_b)
 
         return cov_mat
 
@@ -95,28 +95,38 @@ class RGP:
 
         self.X = X
         self.y_ = y_
-        # Mean function m(x) = 0
-        self.K = RBF()
+        
+        # L and sigma_f are the hyperparameters of the RBF kernel function, they are not properties of the RGP
+        L = np.eye(self.X.shape[1]) # RBF
+        sigma_f = 1 # RBF
         self.sigma_n = 0.1 # Noise variance
-        self.eta = np.array([self.K.L, self.K.sigma_f, self.sigma_n]) # Hyperparameters
+
+               
+        # Mean function m(x) = 0
+        self.K = RBF(L=L, sigma_f=sigma_f) # Kernel function
+
+        
         # WARNING: Dont confuse the estimate g at X with the estimate g_t at X_t 
         # p(g|y_t-1)
-        self.mu_g_t_minus_1 = y_ # The a priori mean is the measurement with no y_t 
-        self.C_g_t_minus_1 = self.K.covariance_matrix(X, X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # The a priori covariance is the covariance with no y_t
+        self.mu_g_t = y_ # The a priori mean is the measurement with no y_t 
+        self.C_g_t = self.K.covariance_matrix(X, X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # The a priori covariance is the covariance with no y_t
+
+        # Hyperparameter estimates for RGP*
+        # np.log to transform L into strictly positive values for training, inverse transformation is done at the end of learning
+        #self.mu_eta_t = np.concatenate([np.log(np.diagonal(L)), [np.log(sigma_f)], [np.log(self.sigma_n)]])  # The a priori mean of the hyperparameters is the hyperparameters
+        self.mu_eta_t = np.concatenate([np.diagonal(L), [sigma_f], [self.sigma_n]])  # The a priori mean of the hyperparameters is the hyperparameters
+        self.C_eta_t = np.eye(self.mu_eta_t.shape[0]) # The a priori covariance of the hyperparameters is the identity matrix
+        
+        # Cross-covaariance between the basis vectors and the hyperparameters
+        self.C_g_eta_t = np.zeros((self.X.shape[0], self.mu_eta_t.shape[0])) # The a priori covariance is zero
 
 
-        # Initialize the state (regression parameters only) for RGP
-        # p(g)
-        self.mu_g_t = self.mu_g_t_minus_1
-        self.C_g_t = self.C_g_t_minus_1 
 
-        # Initialize the state (regression parameters and hyperparameters) for RGP*
-        # p(g, eta|y_{1:t}) = p(z|y_{1:t})
-
-
-        # Precompute these since they do not change with regression
+        # Precompute these since they do not change with regression (They change during learning, since the hyperparameters change)
         self.K_x = self.K.covariance_matrix(self.X, self.X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # Covariance matrix over X
         self.K_x_inv = np.linalg.inv(self.K_x) # Inverse of the covariance matrix over X
+
+
         
         
     def predict(self, X_t_star : np.array, cov : bool, return_Jt : bool = False) -> np.array:
@@ -173,7 +183,7 @@ class RGP:
         Performs both the updating of the basis vectors, but also the hyperparameter optimization
         """
         
-        n_eta = self.eta.shape[0] # State dimension of eta
+        n_eta = self.mu_eta_t.shape[0] # State dimension of eta
         n_g = self.mu_g_t.shape[0] # State dimension of g
         n_g_t = yt.shape[0] # State dimension of g_t
         n_p = n_g + n_eta + n_g_t # State dimension of p
@@ -181,26 +191,14 @@ class RGP:
         assert n_g_t == 1, "Only one-dimensional regression is supported"
         assert Xt.shape[0] == 1, "Only one-dimensional regression is supported"
 
-        #z_t = np.concatenate((self.y_, self.eta)) # The measurement vector
+        # ------ New data received -> step the memory forward ------
+        self.mu_g_t_minus_1 = self.mu_g_t # The a priori mean is the estimate of g at X_
+        self.C_g_t_minus_1 = self.C_g_t
 
-        # TODO: Do the time update properly
-        mu_g_t = self.mu_g_t
-        mu_g_t_minus_1 = mu_g_t
-        C_g_t = self.C_g_t
-        C_g_t_minus_1 = C_g_t
+        self.mu_eta_t_minus_1 = self.mu_eta_t
+        self.C_eta_t_minus_1 = self.C_eta_t
 
-        mu_eta_t = self.eta
-        mu_eta_t_minus_1 = mu_eta_t
-        # Covariance matrix of eta
-        C_eta_t = np.eye(n_eta)
-        C_eta_t_minus_1 = C_eta_t
-
-        # Cross-covariance matrix between eta and g
-        C_g_eta_t = np.zeros((n_g, n_eta)) 
-        C_g_eta_t_minus_1 = C_g_eta_t
-
-        C_z_t = np.bmat([[self.C_g_t, C_g_eta_t_minus_1],[C_g_eta_t_minus_1.T, C_eta_t]])
-        C_z_t_minus_1 = C_z_t
+        self.C_g_eta_t_minus_1 = self.C_g_eta_t
 
 
         # ------! Inference step !------
@@ -208,7 +206,7 @@ class RGP:
         Jt = self.K.covariance_matrix(Xt, self.X).dot(self.K_x_inv) # Gain matrix (same as in regression)
         assert Jt.shape[1] == n_g, "Jt.shape[1] != n_g"
         B = self.K.covariance_matrix(Xt, Xt) - Jt.dot(self.K.covariance_matrix(self.X, Xt)) # Covariance of p(g_t|g_)
-        St = C_g_eta_t_minus_1.dot(np.linalg.inv(C_eta_t_minus_1))
+        St = self.C_g_eta_t_minus_1.dot(np.linalg.inv(self.C_eta_t_minus_1))
 
         # At is a function of Jt which is a function of eta (nonlinear function)
         At = np.asarray(np.bmat([
@@ -227,9 +225,10 @@ class RGP:
 
         
         # ------ Unscented transform ------
-        w, eta_hat = self.__draw_sigma_points(mu_eta_t, C_eta_t)
+        w, eta_hat = self.__draw_sigma_points(self.mu_eta_t_minus_1, self.C_eta_t_minus_1)
         s = w.shape[0] # Number of sigma points
         
+        # p = [g, eta, g_t]
         mu_p_i = np.empty((s, n_p)) # Allocate memory
         C_p_i = np.empty((s, n_p, n_p)) # Allocate memory
         
@@ -240,12 +239,12 @@ class RGP:
             # --------- Individual predictions from sigma points ---------
             # Transform the sigma points
             mu_p_i[i,:] = At.dot(np.concatenate([
-                    mu_g_t_minus_1.ravel() + St.dot(eta_hat[i,:] - mu_eta_t_minus_1),
+                    self.mu_g_t_minus_1.ravel() + St.dot(eta_hat[i,:] - self.mu_eta_t_minus_1),
                     eta_hat[i,:]]
                     , axis=0)).ravel() + mu_w_t
 
             
-            tmp_matrix = np.bmat([[C_g_t_minus_1 - St.dot(C_g_eta_t_minus_1.T), np.zeros((n_g, n_eta))],[np.zeros((n_eta, n_g)), np.zeros((n_eta, n_eta))]])
+            tmp_matrix = np.bmat([[self.C_g_t_minus_1 - St.dot(self.C_g_eta_t_minus_1.T), np.zeros((n_g, n_eta))],[np.zeros((n_eta, n_g)), np.zeros((n_eta, n_eta))]])
             C_p_i[i,:,:] = At.dot(np.asarray(tmp_matrix)).dot(At.T) + C_w_t
         
             # --------- Combine individual predictions ---------
@@ -257,12 +256,15 @@ class RGP:
         # ------! Update step !------
 
         # Decomposition of mu_p_t into observable and unobservable parts
-        # Observable part: sigma_n, g_t
+        
 
         # Observable part
+        # o = [sigma_n, g_t]
         mu_o_t = mu_p_t[n_g + n_eta - 1:] # sigma_n is on index n_g+n_eta-1 and is last of eta, everything after is is g_t
         C_o_t = C_p_t[n_g + n_eta - 1:, n_g + n_eta - 1:]
+
         # Unobservable part
+        # u = [g, eta-]  (eta- is eta without the last element, sigma_n)
         mu_u_t_minus_1 = mu_p_t[:n_g + n_eta - 1]
         C_u_t_minus_1 = C_p_t[:n_g + n_eta - 1, :n_g + n_eta - 1]
         # Covariance between observable and unobservable parts
@@ -276,6 +278,8 @@ class RGP:
         
         Gt = C_o_y_t.dot(np.linalg.inv(C_y_t)) # Kalman gain
 
+        # Updated observable part
+        # e = [sigma_n, g_t]
         mu_e_t = mu_o_t + Gt.dot(yt - mu_y_t)
         C_e_t = C_o_t - Gt.dot(C_y_t).dot(Gt.T)
 
@@ -287,17 +291,40 @@ class RGP:
         C_u_t = C_u_t_minus_1 + Lt.dot(C_e_t - C_o_t).dot(Lt.T)
 
 
-        h = np.zeros((mu_e_t.shape[0], ))
-        h[0] = 1.0
+        # u = [g, eta-]
+        # e = [sigma_n, g_t]
+        # z = [g, eta]
+        
 
-        # sigma_n; g_t; L; sigma_f
-
-        sigma_n = np.array([h.dot(mu_e_t)])
-        mu_z_t = np.asarray(np.bmat([[sigma_n],[mu_u_t]])).ravel()
-
+        h = np.zeros((mu_e_t.shape[0],)) # Select first element of mu_e_t
+        h[0] = 1
+        # sigma_n = h.dot(mu_e_t)
+        
+        mu_z_t = np.concatenate([mu_u_t, [h.dot(mu_e_t)]], axis=0)
         C_z_t = np.asarray(np.bmat([
-            [np.array([h.dot(C_e_t).dot(h.T)]).reshape(1,1), (h.dot(C_e_t).dot(Lt.T)).reshape((1,-1))],
-            [(Lt.dot(C_e_t).dot(h.T)).reshape((-1,1)), C_u_t]]))
+            [C_u_t, (Lt.dot(C_e_t).dot(h.T)).reshape((-1,1))],
+            [(h.dot(C_e_t).dot(Lt.T)).reshape((1,-1)), np.array([h.dot(C_e_t).dot(h.T)]).reshape(1,1)]]))
+
+
+        self.mu_g_t = mu_z_t[:n_g]
+        self.C_g_t = C_z_t[:n_g, :n_g]
+
+        self.mu_eta_t = mu_z_t[n_g:]
+        self.C_eta_t = C_z_t[n_g:, n_g:]
+
+        #breakpoint()
+        # Use the updated hyperparameters
+        self.K.L = np.diag([np.exp(self.mu_eta_t[0])])
+        self.K.sigma_f = np.exp(self.mu_eta_t[1])
+        self.sigma_n = np.exp(self.mu_eta_t[2])
+
+        self.K.L = np.diag([self.mu_eta_t[0]])
+        self.K.sigma_f = self.mu_eta_t[1]
+        self.sigma_n = self.mu_eta_t[2]
+
+        # These "precomputed" matrices need to be updated with the new hyperparameters as well
+        self.K_x = self.K.covariance_matrix(self.X, self.X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # Covariance matrix over X
+        self.K_x_inv = np.linalg.inv(self.K_x) # Inverse of the covariance matrix over X
 
         return mu_z_t, C_z_t
 
