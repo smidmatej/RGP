@@ -43,13 +43,14 @@ def main():
     y_true = np.sin(X_query)
 
     # ----- The training data -----
-    n_training = 300
+    n_training = 50
     X_t = np.random.uniform(-10,10, size=(n_training,1))
     X_t = np.sort(X_t, axis=0)
 
     # Put half of the data at the end in reverse order
     X_t = np.concatenate((X_t[::2], np.flip(X_t[::2])), axis=0)
-    y_t = np.sin(X_t) + np.random.normal(0, 0.1, size=X_t.shape)
+    sample_noise = 0.1
+    y_t = np.sin(X_t) + np.random.normal(0, sample_noise, size=X_t.shape)
 
 
     rgp = RGP(X_, y_)
@@ -69,9 +70,6 @@ def main():
         pbar.update()
     pbar.close()
 
-    mean_posterior, cov_posterior = rgp.predict(X_query, cov=True)
-    std_posterior = np.sqrt(np.diag(cov_posterior))
-    
 
     # ----------------- PLOT -----------------
 
@@ -198,7 +196,7 @@ def main():
 
     #gs = gridspec.GridSpec(2, 2)
     
-    fig = plt.figure(figsize=(10,10), dpi=100)
+    fig = plt.figure(figsize=(10,10), dpi=60)
     ax = fig.add_subplot(111)
 
     line_mean, = ax.plot([], [], '--', color=cs[0], label='E[g(x)]')
@@ -227,8 +225,9 @@ def main():
 
 
     pbar = tqdm(total=X_t.shape[0])
-    ani = animation.FuncAnimation(fig, animate, frames=len(mean_training), interval=500)     
-    ani.save('regression.gif', writer='imagemagick', fps=10, dpi=100)
+    number_of_frames = len(mean_training)
+    ani = animation.FuncAnimation(fig, animate, frames=number_of_frames, interval=500)     
+    ani.save('regression.gif', writer='imagemagick', fps=10, dpi=30)
     ani.save('regression.mp4', writer='ffmpeg', fps=10, dpi=100)
     pbar.close()
     plt.show()

@@ -80,21 +80,22 @@ class RBF:
         
 
 class RGP:
-    def __init__(self, X : np.array, y_ : np.array) -> None:
+    def __init__(self, X : np.array, y : np.array) -> None:
         """
         :param: X: n x dx np.array, where n is the number of basis vectors and dx is the dimension of the regressor
-        :param: y_: n x dy np.array, where n is the number of basis vectors and dy is the dimension of the response
+        :param: y: n x dy np.array, where n is the number of basis vectors and dy is the dimension of the response
         """
 
-        assert X.shape[0] == y_.shape[0], "X and y_ must have the same number of rows"
+        assert X.shape[0] == y.shape[0], "X and y must have the same number of rows"
 
-        if y_.shape[1] > 1:
+        #breakpoint()
+        if y.shape[1] > 1:
             raise NotImplementedError("Only 1D response is supported")
         if X.shape[1] > 1:
             raise NotImplementedError("Only 1D regressor is supported")
 
         self.X = X
-        self.y_ = y_
+        self.y = y
         
         # L and sigma_f are the hyperparameters of the RBF kernel function, they are not properties of the RGP
         L = np.eye(self.X.shape[1]) # RBF
@@ -108,7 +109,7 @@ class RGP:
         
         # WARNING: Dont confuse the estimate g at X with the estimate g_t at X_t 
         # p(g|y_t-1)
-        self.mu_g_t = y_ # The a priori mean is the measurement with no y_t 
+        self.mu_g_t = y # The a priori mean is the measurement with no y_t 
         self.C_g_t = self.K.covariance_matrix(X, X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # The a priori covariance is the covariance with no y_t
 
         # Hyperparameter estimates for RGP*
@@ -129,9 +130,9 @@ class RGP:
 
         
         
-    def predict(self, X_t_star : np.array, cov : bool, return_Jt : bool = False) -> np.array:
+    def predict(self, X_t_star : np.array, cov : bool = False, return_Jt : bool = False) -> np.array:
         """
-        Predict the value of the response at X_t_star given the data X and y_.
+        Predict the value of the response at X_t_star given the data X and y.
         :param: X_t_star: m x dx np.array, where m is the number of points to predict at and dx is the dimension of the regressor
         :param: cov: Boolean value. If true, the covariance matrix of the prediction is calculated and returned as well
         """
