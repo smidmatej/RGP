@@ -159,7 +159,7 @@ def main():
     ax[3].set_ylabel('y')
     ax[3].set_title('Difference (true - prior)')
 
-    plt.savefig('regression_comparisson.png')
+    plt.savefig('outputs/regression_comparisson.png')
     plt.show()
 
 
@@ -227,8 +227,8 @@ def main():
     pbar = tqdm(total=X_t.shape[0])
     number_of_frames = len(mean_training)
     ani = animation.FuncAnimation(fig, animate, frames=number_of_frames, interval=500)     
-    ani.save('regression.gif', writer='imagemagick', fps=10, dpi=30)
-    ani.save('regression.mp4', writer='ffmpeg', fps=10, dpi=100)
+    ani.save('outputs/regression.gif', writer='imagemagick', fps=10, dpi=30)
+    ani.save('outputs/regression.mp4', writer='ffmpeg', fps=10, dpi=100)
     pbar.close()
     plt.show()
 
