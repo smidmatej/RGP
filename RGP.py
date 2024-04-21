@@ -80,7 +80,7 @@ class RBF:
         
 
 class RGP:
-    def __init__(self, X : np.array, y : np.array) -> None:
+    def __init__(self, X : np.array, y : np.array, theta=np.array([1.0,1.0,1.0])) -> None:
         """
         :param: X: n x dx np.array, where n is the number of basis vectors and dx is the dimension of the regressor
         :param: y: n x dy np.array, where n is the number of basis vectors and dy is the dimension of the response
@@ -97,10 +97,11 @@ class RGP:
         self.X = X
         self.y = y
         
+        self.theta = theta
         # L and sigma_f are the hyperparameters of the RBF kernel function, they are not properties of the RGP
-        L = np.eye(self.X.shape[1]) # RBF
-        sigma_f = 1 # RBF
-        self.sigma_n = 0.1 # Noise variance
+        L = np.eye(self.X.shape[1]) * self.theta[0]# RBF
+        sigma_f = self.theta[1] # RBF
+        self.sigma_n = self.theta[2] # Noise variance
 
                
         # Mean function m(x) = 0
@@ -322,6 +323,8 @@ class RGP:
         self.K.L = np.diag([self.mu_eta_t[0]])
         self.K.sigma_f = self.mu_eta_t[1]
         self.sigma_n = self.mu_eta_t[2]
+
+        self.theta = np.array([self.mu_eta_t[0], self.mu_eta_t[1], self.mu_eta_t[2]])
 
         # These "precomputed" matrices need to be updated with the new hyperparameters as well
         self.K_x = self.K.covariance_matrix(self.X, self.X) + self.sigma_n**2 * np.eye(self.X.shape[0]) # Covariance matrix over X
