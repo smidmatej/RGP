@@ -144,7 +144,7 @@ class RGP:
         if cov:
             # Calculate and return the covariance matrix too
             B = self.K.covariance_matrix(X_t_star, X_t_star) - Jt.dot(self.K.covariance_matrix(self.X, X_t_star)) # Covariance of p(g_t|g_)
-            C_p_t = B + Jt .dot(self.C_g_t).dot(Jt.T) # The a posteriori covariance of p(g_t|y_t)
+            C_p_t = B + Jt.dot(self.C_g_t).dot(Jt.T) # The a posteriori covariance of p(g_t|y_t)
             #breakpoint()
             if return_Jt:
                 return mu_p_t, C_p_t, Jt

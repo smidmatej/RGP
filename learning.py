@@ -43,7 +43,7 @@ def main():
     y_true = np.sin(X_query)
 
     # ----- The training data -----
-    n_training = 300
+    n_training = 50
     X_t = np.random.uniform(-10,10, size=(n_training,1))
     X_t = np.sort(X_t, axis=0)
 

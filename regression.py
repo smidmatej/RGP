@@ -196,7 +196,7 @@ def main():
 
     #gs = gridspec.GridSpec(2, 2)
     
-    fig = plt.figure(figsize=(10,10), dpi=60)
+    fig = plt.figure(figsize=(10,10), dpi=100)
     ax = fig.add_subplot(111)
 
     line_mean, = ax.plot([], [], '--', color=cs[0], label='E[g(x)]')
